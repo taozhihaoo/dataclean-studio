@@ -1,0 +1,30 @@
+# VCS / CI
+.git
+.github
+.gitignore
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+backend/*.egg-info
+backend/.pytest_tmp
+
+# Runtime data (mounted as a volume instead)
+data
+backend/data
+
+# Docs / tooling not needed in the image
+docs
+demo-data
+scripts
+*.md
+.env
+.env.*

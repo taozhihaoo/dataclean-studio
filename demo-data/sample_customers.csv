@@ -1,0 +1,49 @@
+cust_nm,mail,ph_no,age,status,created_at,city,notes
+  John Smith  ,john.smith@example.com,+1 (555) 010-1234,34, active,2025-01-15,New York,VIP
+JANE DOE,jane.doe@example.com,555-010-5678,28,ACTIVE ,01/20/2025, new york ,
+mIxEd CaSe,mixed.case@mail.com,(555) 010 9876,,inactive,"Jan 25, 2025",Boston,  follow up  
+Alice Wonder,alice@example.com,555.010.4321,45,active,2025-02-01,Chicago,
+Bob Brown,bob@example.com,5550101111,52, active,15 Feb 2025,,
+Charlie Chan,not-an-email,555/010/2222,19,PENDING,2025-02-20,Denver,
+Dana White,dana.white@example.com,+1 (555) 010-3333,130,active,03/04/2025,Austin,VIP
+Evan Wright,john.smith@example.com,555 010 4444,27,,2025.03.05,Seattle,
+Fiona Green,@missing-domain,555-010-5555,61,active,"Mar 10, 2025",Miami,
+George Black,george@@example,5550106666,38,inactive,2025-03-12,,
+Hannah Stone,hannah@example.com,+1 (555) 010-7777,41,Active,2025-03-15,Portland,follow up
+Ian Cross,ian.cross@example.com,(555)010-8888,,active,20 Mar 2025,Boston,
+Julia Reyes,julia.reyes@example.com,5550109999,33,inactive,2025-04-02,Chicago,
+Karl Urban,karl@example.com,555.010.1212,55, active,04/18/2025,Denver,
+Laura Palmer,jane.doe@example.com,+1 (555) 010-1313,29,ACTIVE,2025-04-21,Seattle,
+Mike Ross,mike.ross@example.com,555-010-1414,-3,active,"May 02, 2025",Austin,
+Nina Patel,nina@example.com,+1 (555) 010-1515,36,active,2025-05-05,Miami,VIP
+Oscar Wilde,oscar.wilde@sample.org,5550101616,48,inactive,2025-05-09,Portland,
+Paula Adams,paula@example.com,(555) 010 1717,23, active,2025-05-15,New York,
+Quentin Tar,quentin@sample.org,555-010-1818,57,ACTIVE,18 May 2025,,follow up
+Rachel Kim,rachel.kim@example.com,+1 (555) 010-1919,31,active,2025-06-01,Chicago,
+Steve Jobs,steve@,5550102020,44,inactive,06/10/2025,Denver,
+Tara Singh,tara.singh@example.com,555 010 2121,26,active,2025-06-15,Austin,
+Umar Akmal,umar@example.com,+1 (555) 010-2222,39,active,2025-06-20,Seattle,VIP
+Vera Miles,vera.miles@example.com,555.010.2323,53,,"Jun 25, 2025",Boston,
+Will Turner,will@example.com,(555)010-2424,21,inactive,2025-07-03,Miami,
+Xena Prince,xena.prince@example.com,555-010-2525,35, active,2025-07-08,Portland,
+Yusuf Islam,yusuf@example.com,+1 (555) 010-2626,60,ACTIVE,07/15/2025,New York,
+Zoe Chan,alice@example.com,5550102727,24,active,2025-07-20,Denver,
+Adam West,adam.west@example.com,555-010-2828,47,inactive,"Jul 28, 2025",Austin,
+Bella Swan,bella@example.com,+1 (555) 010-2929,22,active,2025-08-02,Seattle,
+Carl Jung,carl.jung@sample.org,555 010 3030,66,active,2025-08-05,Boston,follow up
+Diana Prince,diana@example.com,(555) 010-3131,30,ACTIVE,2025-08-12,Chicago,
+Edward Nygma,edward@@sample,555.010.3232,40,inactive,08/18/2025,Denver,
+Fay Wray,fay.wray@example.com,+1 (555) 010-3333,58,active,2025-08-25,Miami,
+Gus Fring,gus@example.com,5550103434,49, active,"Aug 30, 2025",Portland,
+Holly Golightly,holly@example.com,555-010-3535,25,active,2025-09-03,New York,VIP
+Igor Stravinsky,igor.stravinsky@sample.org,+1 (555) 010-3636,62,ACTIVE,2025-09-10,Seattle,
+June Carter,june.carter@example.com,(555)010-3737,37,inactive,09/15/2025,Boston,
+Kirk Douglas,kirk@example.com,555 010 3838,67,active,2025-09-20,Chicago,
+Lola Marsh,lola.marsh@example.com,555-010-3939,32,,2025-09-25,Denver,
+Milo Ventimiglia,milo@example.com,555.010.4040,43,active,"Sep 28, 2025",Austin,
+Nora Ephron,nora@example.com,+1 (555) 010-4141,54,active,2025-10-02,Miami,
+Omar Sharif,omar.sharif@sample.org,5550104242,70,inactive,2025-10-07,Portland,
+Pia Zadora,pia@example.com,(555) 010 4343,20, active,10/12/2025,New York,
+Quincy Jones,quincy.jones@example.com,555-010-4444,65,ACTIVE,2025-10-18,Seattle,follow up
+Rita Ora,rita@example.com,+1 (555) 010-4545,34,inactive,"Oct 22, 2025",Boston,
+Sam Mendes,sam.mendes@example.com,555 010 4646,46,active,2025-10-28,Chicago,

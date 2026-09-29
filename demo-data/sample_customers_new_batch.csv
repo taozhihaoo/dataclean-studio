@@ -1,0 +1,9 @@
+cust_nm,mail,ph_no,age,status,created_at,region
+John Smith,john.smith@example.com,+1 (555) 010-1234,35,active,2025-11-02,northeast
+Jane Doe,jane.doe@example.com,555-010-5678,29,active,2025-11-05,northeast
+Alice Wonder,alice@example.com,555.010.4321,46,active,2025-11-09,midwest
+Trevor Nydam,trevor@example.com,555-011-7001,31,ACTIVE,2025-11-15,
+Uma Thornton,uma.thornton@example.com,+1 (555) 011-7002,42, active,2025-11-21,south
+Victor Vega,victor@example.com,(555) 011-7003,38,inactive,2025-12-01,west
+Wanda Maxim,wanda@example.com,5550117004,27,active,12/08/2025,
+Xavier Niel,xavier.niel@example.com,555-011-7005,51,active,"Dec 15, 2025",northeast

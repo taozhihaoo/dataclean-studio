@@ -1,0 +1,16 @@
+order_id,cust_nm,mail,amount,order_date
+ORD-1001,John Smith,john.smith@example.com,120.50,2025-03-01
+ORD-1002,jane doe,jane.doe@example.com,89.99,03/15/2025
+ORD-1003,ALICE WONDER,alice@example.com,240.00,2025-04-02
+ORD-1004,Bob Brown,bob@example.com,15.25,"Apr 18, 2025"
+ORD-1005,Charlie Chan,not-an-email,60.00,2025-05-09
+ORD-1006,Dana White,dana.white@example.com,310.75,2025-05-30
+ORD-1007,New Customer,new.customer@example.com,45.10,06/12/2025
+ORD-1008,Evan Wright,john.smith@example.com,99.95,2025-06-28
+ORD-1009,Fiona Green,@missing-domain,12.00,"Jul 05, 2025"
+ORD-1010,Hannah Stone,hannah@example.com,175.40,2025-07-19
+ORD-1011,Ian Cross,ian.cross@example.com,220.00,2025-08-01
+ORD-1012,Julia Reyes,julia.reyes@example.com,77.77,08/14/2025
+ORD-1013,Karl Urban,karl@example.com,5.50,2025-08-30
+ORD-1014,Laura Palmer,jane.doe@example.com,130.00,"Sep 10, 2025"
+ORD-1015,Mike Ross,mike.ross@example.com,88.00,2025-09-22

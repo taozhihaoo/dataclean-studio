@@ -1,0 +1,7 @@
+# Normalize line endings: LF everywhere, CRLF only where Windows requires it
+* text=auto eol=lf
+
+*.png binary
+*.xlsx binary
+*.xls binary
+*.ico binary

@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    image: dataclean-studio:latest
+    container_name: dataclean-studio
+    ports:
+      - "8000:8000"
+    volumes:
+      # SQLite database, uploads, datasets and exports survive restarts
+      - dataclean-data:/app/data
+    environment:
+      DATA_CLEAN_DATA_DIR: /app/data
+      DATA_CLEAN_MAX_UPLOAD_MB: "25"
+      # Optional AI schema inference — leave unset for the offline default.
+      # OPENAI_API_KEY: sk-...
+    restart: unless-stopped
+
+volumes:
+  dataclean-data:
