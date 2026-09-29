@@ -4,6 +4,10 @@ Every transform run starts from the original parsed dataset
 (`original.pkl`), applies the full configured pipeline, and stores the
 result as `current.pkl`. Re-running an edited pipeline therefore
 overwrites the previous result instead of compounding steps.
+
+The pipeline configuration of a job is persisted in SQLite (one saved
+config per job) using the same schema as a transform request, so it can
+be replayed directly and restored into the UI verbatim.
 """
 
 from __future__ import annotations
@@ -15,9 +19,12 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.dataframe_ops import parsers
 from app.core.dataframe_ops.validation_rules import apply_validation
+from app.core.errors import DataCleanError
 from app.db import repositories
 from app.pipeline.engine import PipelineEngine
 from app.schemas.transform import (
+    PIPELINE_CONFIG_VERSION,
+    SavedPipelineResponse,
     TransformPreviewResponse,
     TransformRequest,
     TransformResponse,
@@ -30,6 +37,76 @@ logger = logging.getLogger(__name__)
 
 _PREVIEW_ROW_LIMIT = 50
 _PREVIEW_MAX_ROWS = 200
+
+
+# --- saved pipeline configuration -------------------------------------------
+
+
+async def get_saved_pipeline(job_id: str) -> SavedPipelineResponse:
+    return await run_in_threadpool(_get_saved_pipeline_sync, job_id)
+
+
+def _get_saved_pipeline_sync(job_id: str) -> SavedPipelineResponse:
+    get_job_or_error(job_id)
+    row = repositories.get_pipeline_config(job_id)
+    if not row:
+        raise DataCleanError(
+            "pipeline_not_found",
+            "This job has no saved pipeline configuration.",
+            status_code=404,
+        )
+    return SavedPipelineResponse(
+        job_id=job_id,
+        version=PIPELINE_CONFIG_VERSION,
+        steps=row["config"]["steps"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+async def save_pipeline(job_id: str, request: TransformRequest) -> SavedPipelineResponse:
+    return await run_in_threadpool(_save_pipeline_sync, job_id, request)
+
+
+def _save_pipeline_sync(job_id: str, request: TransformRequest) -> SavedPipelineResponse:
+    get_job_or_error(job_id)
+    # Duplicate step ids (and any engine-level structural problem) are
+    # rejected before anything is written.
+    PipelineEngine(request.steps)
+    config = _canonical_config(request)
+    row = repositories.save_pipeline_config(job_id, config)
+    return SavedPipelineResponse(
+        job_id=job_id,
+        version=PIPELINE_CONFIG_VERSION,
+        steps=row["config"]["steps"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+async def delete_saved_pipeline(job_id: str) -> None:
+    return await run_in_threadpool(_delete_saved_pipeline_sync, job_id)
+
+
+def _delete_saved_pipeline_sync(job_id: str) -> None:
+    get_job_or_error(job_id)
+    if not repositories.delete_pipeline_config(job_id):
+        raise DataCleanError(
+            "pipeline_not_found",
+            "This job has no saved pipeline configuration.",
+            status_code=404,
+        )
+
+
+def _canonical_config(request: TransformRequest) -> dict[str, Any]:
+    """Stable storage format: validated request shape, no client extras."""
+    return {
+        "version": PIPELINE_CONFIG_VERSION,
+        "steps": request.model_dump(mode="json", exclude_none=True)["steps"],
+    }
+
+
+# --- validation & transformation ---------------------------------------------
 
 
 async def run_transform(job_id: str, request: TransformRequest) -> TransformResponse:
@@ -61,6 +138,9 @@ def _run_transform_sync(job_id: str, request: TransformRequest) -> TransformResp
                 {"id": s.step_id, "type": s.step_type, "status": s.status, "summary": s.summary}
                 for s in outcome.steps
             ],
+            # The exact configuration used, so any historical run can be
+            # restored and re-executed later.
+            "pipeline": _canonical_config(request),
         },
     )
     return TransformResponse(

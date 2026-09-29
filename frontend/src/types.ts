@@ -147,6 +147,37 @@ export interface RunSummary {
   summary: Record<string, unknown> | null;
 }
 
+/** A pipeline configuration as persisted server-side (stable format). */
+export interface SavedPipeline {
+  job_id: string;
+  version: number;
+  steps: PipelineStep[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BatchFileError {
+  code: string;
+  message: string;
+}
+
+export interface BatchUploadResult {
+  filename: string;
+  stored_filename: string | null;
+  status: "uploaded" | "failed";
+  job_id: string | null;
+  row_count: number | null;
+  column_count: number | null;
+  size_bytes: number | null;
+  error: BatchFileError | null;
+}
+
+export interface BatchUploadResponse {
+  results: BatchUploadResult[];
+  uploaded: number;
+  failed: number;
+}
+
 export interface FileMergeStat {
   job_id: string;
   filename: string;

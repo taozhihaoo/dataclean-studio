@@ -1,6 +1,6 @@
 /** Thin fetch wrapper: JSON in/out, blob downloads, uniform ApiError. */
 
-import type { ApiErrorBody } from "../types";
+import type { ApiErrorBody, BatchUploadResponse } from "../types";
 
 export class ApiError extends Error {
   code: string;
@@ -15,6 +15,9 @@ export class ApiError extends Error {
     this.details = details;
   }
 }
+
+const DEFAULT_TIMEOUT_MS = 60_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
 
 async function parseError(response: Response): Promise<ApiError> {
   let code = "http_error";
@@ -33,15 +36,32 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, code, message, details);
 }
 
-export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
-    headers: options.body instanceof FormData ? options.headers : { "Content-Type": "application/json", ...options.headers },
-    ...options,
-  });
+async function requestRaw<T>(path: string, options: RequestInit, timeoutMs: number): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(path, { ...options, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError(0, "timeout", "The request timed out. Please try again.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) {
     throw await parseError(response);
   }
   return (await response.json()) as T;
+}
+
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers =
+    options.body instanceof FormData
+      ? options.headers
+      : { "Content-Type": "application/json", ...options.headers };
+  return requestRaw<T>(path, { headers, ...options }, DEFAULT_TIMEOUT_MS);
 }
 
 export async function downloadFile(path: string, options: RequestInit = {}): Promise<void> {
@@ -69,14 +89,35 @@ export async function downloadFile(path: string, options: RequestInit = {}): Pro
 export function uploadFile<T>(file: File): Promise<T> {
   const form = new FormData();
   form.append("upload", file);
-  return request<T>("/api/files/upload", { method: "POST", body: form });
+  return requestRaw<T>(
+    "/api/files/upload",
+    { method: "POST", body: form },
+    UPLOAD_TIMEOUT_MS
+  );
+}
+
+/** Upload several files in one request; each file is processed independently
+ * by the backend, so per-file failures come back as results, not errors. */
+export function uploadFilesBatch(files: File[]): Promise<BatchUploadResponse> {
+  const form = new FormData();
+  for (const file of files) {
+    form.append("files", file);
+  }
+  return requestRaw<BatchUploadResponse>(
+    "/api/files/upload-batch",
+    { method: "POST", body: form },
+    UPLOAD_TIMEOUT_MS
+  );
 }
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
   upload: uploadFile,
+  uploadBatch: uploadFilesBatch,
   download: downloadFile,
 };

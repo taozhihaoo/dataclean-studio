@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS processing_runs (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pipeline_configs (
+    job_id     TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    config     TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_runs_job ON processing_runs(job_id);
 """
 

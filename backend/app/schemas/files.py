@@ -69,3 +69,25 @@ class MetaResponse(BaseModel):
     preview_row_limit: int
     inference: dict[str, Any]
     target_schema_suggestions: list[str] = Field(default_factory=list)
+
+
+class BatchFileError(BaseModel):
+    code: str
+    message: str
+
+
+class BatchUploadResult(BaseModel):
+    filename: str
+    stored_filename: str | None = None
+    status: str  # "uploaded" | "failed"
+    job_id: str | None = None
+    row_count: int | None = None
+    column_count: int | None = None
+    size_bytes: int | None = None
+    error: BatchFileError | None = None
+
+
+class BatchUploadResponse(BaseModel):
+    results: list[BatchUploadResult]
+    uploaded: int
+    failed: int

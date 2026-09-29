@@ -28,9 +28,18 @@ export default function DashboardPage() {
     api.get<MetaResponse>("/api/meta").then(setMeta).catch(() => undefined);
   }, [refresh]);
 
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
   async function deleteJob(jobId: string) {
-    await api.del(`/api/jobs/${jobId}`);
-    refresh();
+    setError(null);
+    try {
+      await api.del(`/api/jobs/${jobId}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setConfirmingId(null);
+      refresh();
+    }
   }
 
   return (
@@ -111,9 +120,27 @@ export default function DashboardPage() {
                   <td>{formatNumber(job.column_count)}</td>
                   <td className="muted">{formatDateTime(job.created_at)}</td>
                   <td>
-                    <button className="btn btn-sm btn-danger" onClick={() => deleteJob(job.job_id)}>
-                      Delete
-                    </button>
+                    {confirmingId === job.job_id ? (
+                      <span className="row-gap" style={{ gap: 6 }}>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => deleteJob(job.job_id)}
+                          data-testid="confirm-delete"
+                        >
+                          Confirm delete
+                        </button>
+                        <button className="btn btn-sm" onClick={() => setConfirmingId(null)}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => setConfirmingId(job.job_id)}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

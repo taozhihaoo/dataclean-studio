@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type {
@@ -6,13 +6,16 @@ import type {
   JobDetail,
   NormalizationOp,
   PipelineStep,
+  RunSummary,
+  SavedPipeline,
   StepReport,
   TransformPreviewResponse,
   TransformResponse,
 } from "../types";
 import { OP_LABELS } from "../lib/opLabels";
 import { DataTable } from "../components/DataTable";
-import { ErrorBanner, SuccessBanner } from "../components/ui";
+import { ErrorBanner, LoadingBlock, SuccessBanner } from "../components/ui";
+import { formatDateTime } from "../lib/format";
 
 type Draft =
   | { kind: "validate" }
@@ -24,13 +27,56 @@ export default function PipelinePage() {
   const { jobId } = useParams();
   const [steps, setSteps] = useState<PipelineStep[]>([]);
   const [detail, setDetail] = useState<JobDetail | null>(null);
-  const [busy, setBusy] = useState<"run" | "preview" | null>(null);
+  const [busy, setBusy] = useState<"run" | "preview" | "save" | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [result, setResult] = useState<TransformResponse | null>(null);
   const [preview, setPreview] = useState<TransformPreviewResponse | null>(null);
 
+  // persistence state
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState<{ message: string; code?: string } | null>(null);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const savedSnapshot = useRef<string>("");
+
+  const stepsKey = JSON.stringify(steps);
+  const isDirty = loadState === "ready" && stepsKey !== savedSnapshot.current;
+
   useEffect(() => {
     api.get<JobDetail>(`/api/jobs/${jobId}`).then(setDetail).catch(() => undefined);
+  }, [jobId]);
+
+  // restore the saved pipeline on entry; surface failures, never swallow them
+  useEffect(() => {
+    let alive = true;
+    setLoadState("loading");
+    api
+      .get<SavedPipeline>(`/api/jobs/${jobId}/pipeline`)
+      .then((saved) => {
+        if (!alive) return;
+        setSteps(saved.steps);
+        savedSnapshot.current = JSON.stringify(saved.steps);
+        setSavedAt(saved.updated_at);
+        setLoadState("ready");
+      })
+      .catch((err: { status?: number; message?: string; code?: string }) => {
+        if (!alive) return;
+        if (err.status === 404) {
+          // no pipeline saved yet — a fresh start, not an error
+          savedSnapshot.current = "[]";
+          setSavedAt(null);
+          setLoadState("ready");
+          return;
+        }
+        setLoadError({ message: err.message ?? String(err), code: err.code });
+        setLoadState("error");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [jobId]);
+
+  // hand-off from the dataset page's "apply as rename step" action
+  useEffect(() => {
     const pending = sessionStorage.getItem(`dcstudio:pendingRename:${jobId}`);
     if (pending) {
       sessionStorage.removeItem(`dcstudio:pendingRename:${jobId}`);
@@ -44,6 +90,52 @@ export default function PipelinePage() {
   }, [jobId]);
 
   const columns = useMemo(() => detail?.columns.map((c) => c.name) ?? [], [detail]);
+
+  const save = useCallback(
+    async (currentSteps: PipelineStep[]): Promise<boolean> => {
+      setBusy("save");
+      setError(null);
+      try {
+        const saved = await api.put<SavedPipeline>(`/api/jobs/${jobId}/pipeline`, {
+          steps: currentSteps,
+        });
+        // the server canonicalizes defaults (e.g. null_tokens), so measure
+        // "saved" against the exact editor state we just persisted
+        savedSnapshot.current = JSON.stringify(currentSteps);
+        setSavedAt(saved.updated_at);
+        return true;
+      } catch (err) {
+        setError({
+          message: err instanceof Error ? err.message : String(err),
+          code: (err as { code?: string }).code,
+        });
+        return false;
+      } finally {
+        setBusy(null);
+      }
+    },
+    [jobId]
+  );
+
+  async function clearPipeline() {
+    setError(null);
+    setPreview(null);
+    setResult(null);
+    setSteps([]);
+    if (savedSnapshot.current !== "[]") {
+      try {
+        await api.del(`/api/jobs/${jobId}/pipeline`);
+      } catch (err) {
+        setError({
+          message: err instanceof Error ? err.message : String(err),
+          code: (err as { code?: string }).code,
+        });
+        return;
+      }
+    }
+    savedSnapshot.current = "[]";
+    setSavedAt(null);
+  }
 
   function addStep(kind: Draft["kind"]) {
     const config =
@@ -83,12 +175,29 @@ export default function PipelinePage() {
     );
   }
 
+  function restoreFromRun(run: RunSummary) {
+    const pipeline = (run.summary as { pipeline?: { steps?: PipelineStep[] } } | null)?.pipeline;
+    if (!pipeline?.steps) return;
+    setResult(null);
+    setPreview(null);
+    setSteps(pipeline.steps);
+  }
+
   async function run(mode: "run" | "preview") {
     setBusy(mode);
     setError(null);
     if (mode === "run") setResult(null);
     setPreview(null);
     try {
+      // a run always executes the current editor state; persist it first so
+      // "what ran" and "what is saved" can never drift apart silently
+      if (mode === "run" && isDirty) {
+        const ok = await save(steps);
+        if (!ok) {
+          setBusy(null);
+          return;
+        }
+      }
       if (mode === "run") {
         setResult(await api.post<TransformResponse>(`/api/jobs/${jobId}/transform`, { steps }));
       } else {
@@ -122,6 +231,13 @@ export default function PipelinePage() {
           {busy === "preview" ? "Previewing…" : "Preview changes"}
         </button>
         <button
+          className="btn"
+          onClick={() => save(steps)}
+          disabled={busy !== null || steps.length === 0 || !isDirty}
+        >
+          {busy === "save" ? "Saving…" : "Save pipeline"}
+        </button>
+        <button
           className="btn btn-primary"
           onClick={() => run("run")}
           disabled={busy !== null || steps.length === 0}
@@ -130,75 +246,93 @@ export default function PipelinePage() {
         </button>
       </div>
 
-      {error && <ErrorBanner message={error.message} code={error.code} />}
-      {result && (
-        <SuccessBanner>
-          Pipeline applied: {result.input_rows} → <strong>{result.output_rows} rows</strong>,{" "}
-          {result.changed_cells} cell(s) changed.{" "}
-          <Link to={`/jobs/${jobId}/export`}>Continue to export →</Link>
-        </SuccessBanner>
+      {loadState === "loading" && <LoadingBlock label="Loading saved pipeline…" />}
+      {loadState === "error" && loadError && (
+        <ErrorBanner message={`Could not load the saved pipeline: ${loadError.message}`} code={loadError.code} />
       )}
 
-      {steps.length === 0 ? (
-        <div className="card empty-state">
-          <div className="icon" aria-hidden="true">🧪</div>
-          <h3>No steps yet</h3>
-          <p>Add steps below — they execute in the order shown.</p>
-        </div>
-      ) : (
-        <div className="card" data-testid="pipeline-steps">
-          {steps.map((step, index) => (
-            <div key={step.id} className={`pipeline-step${step.enabled ? "" : " disabled"}`}>
-              <span className="grip" aria-hidden="true">⣿</span>
-              <div className="body">
-                <h3>
-                  <span className="badge">{index + 1}</span>
-                  <span className="badge warn">{step.type}</span>
-                  <span className="mono">{step.id}</span>
-                </h3>
-                <StepConfig step={step} columns={columns} onChange={(config) => updateStep(step.id, config)} />
-              </div>
-              <div className="step-actions">
-                <button className="btn btn-sm" onClick={() => toggleStep(step.id)}>
-                  {step.enabled ? "Disable" : "Enable"}
-                </button>
-                <button className="btn btn-sm" onClick={() => moveStep(index, -1)} aria-label={`Move ${step.id} up`}>
-                  ↑
-                </button>
-                <button className="btn btn-sm" onClick={() => moveStep(index, 1)} aria-label={`Move ${step.id} down`}>
-                  ↓
-                </button>
-                <button className="btn btn-sm btn-danger" onClick={() => removeStep(step.id)}>
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="card card-pad mt">
-        <h2>Add a step</h2>
-        <div className="row-gap">
-          <button className="btn" onClick={() => addStep("validate")}>
-            Validate rules
-          </button>
-          <button className="btn" onClick={() => addStep("normalize")}>
-            Normalize text / dates / phones
-          </button>
-          <button className="btn" onClick={() => addStep("dedupe")}>
-            Remove duplicates
-          </button>
-          <button className="btn" onClick={() => addStep("rename")}>
-            Rename / map columns
-          </button>
-          {steps.length > 0 && (
-            <button className="btn btn-danger" onClick={() => setSteps([])}>
-              Clear pipeline
-            </button>
+      {loadState === "ready" && (
+        <>
+          {error && <ErrorBanner message={error.message} code={error.code} />}
+          <p className="muted" style={{ marginTop: -8, fontSize: 13 }} data-testid="save-state">
+            {isDirty
+              ? "Unsaved changes — use “Save pipeline” to keep this configuration."
+              : savedAt
+                ? `Saved configuration in use (last updated ${formatDateTime(savedAt)}).`
+                : "New pipeline — not saved yet."}
+          </p>
+          {result && (
+            <SuccessBanner>
+              Pipeline applied: {result.input_rows} → <strong>{result.output_rows} rows</strong>,{" "}
+              {result.changed_cells} cell(s) changed.{" "}
+              <Link to={`/jobs/${jobId}/export`}>Continue to export →</Link>
+            </SuccessBanner>
           )}
-        </div>
-      </div>
+
+          {steps.length === 0 ? (
+            <div className="card empty-state" data-testid="pipeline-empty">
+              <div className="icon" aria-hidden="true">🧪</div>
+              <h3>No steps yet</h3>
+              <p>Add steps below — they execute in the order shown. Save keeps them for later.</p>
+            </div>
+          ) : (
+            <div className="card" data-testid="pipeline-steps">
+              {steps.map((step, index) => (
+                <div key={step.id} className={`pipeline-step${step.enabled ? "" : " disabled"}`}>
+                  <span className="grip" aria-hidden="true">⣿</span>
+                  <div className="body">
+                    <h3>
+                      <span className="badge">{index + 1}</span>
+                      <span className="badge warn">{step.type}</span>
+                      <span className="mono">{step.id}</span>
+                    </h3>
+                    <StepConfig step={step} columns={columns} onChange={(config) => updateStep(step.id, config)} />
+                  </div>
+                  <div className="step-actions">
+                    <button className="btn btn-sm" onClick={() => toggleStep(step.id)}>
+                      {step.enabled ? "Disable" : "Enable"}
+                    </button>
+                    <button className="btn btn-sm" onClick={() => moveStep(index, -1)} aria-label={`Move ${step.id} up`}>
+                      ↑
+                    </button>
+                    <button className="btn btn-sm" onClick={() => moveStep(index, 1)} aria-label={`Move ${step.id} down`}>
+                      ↓
+                    </button>
+                    <button className="btn btn-sm btn-danger" onClick={() => removeStep(step.id)}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="card card-pad mt">
+            <h2>Add a step</h2>
+            <div className="row-gap">
+              <button className="btn" onClick={() => addStep("validate")}>
+                Validate rules
+              </button>
+              <button className="btn" onClick={() => addStep("normalize")}>
+                Normalize text / dates / phones
+              </button>
+              <button className="btn" onClick={() => addStep("dedupe")}>
+                Remove duplicates
+              </button>
+              <button className="btn" onClick={() => addStep("rename")}>
+                Rename / map columns
+              </button>
+              {steps.length > 0 && (
+                <button className="btn btn-danger" onClick={clearPipeline}>
+                  Clear pipeline
+                </button>
+              )}
+            </div>
+          </div>
+
+          <RunHistorySection jobId={jobId!} onRestore={restoreFromRun} />
+        </>
+      )}
 
       {preview && (
         <div className="mt" data-testid="preview-results">
@@ -226,6 +360,123 @@ export default function PipelinePage() {
       )}
     </div>
   );
+}
+
+export function RunHistorySection({
+  jobId,
+  onRestore,
+  limit = 8,
+}: {
+  jobId: string;
+  onRestore?: (run: RunSummary) => void;
+  limit?: number;
+}) {
+  const [runs, setRuns] = useState<RunSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<RunSummary[]>(`/api/jobs/${jobId}/runs`)
+      .then((list) => alive && setRuns(list))
+      .catch((err: Error) => alive && setError(err.message));
+    return () => {
+      alive = false;
+    };
+  }, [jobId]);
+
+  return (
+    <div className="card card-pad mt" data-testid="run-history">
+      <h2>Recent runs</h2>
+      {error && <ErrorBanner message={error} />}
+      {!runs && !error && <LoadingBlock label="Loading run history…" />}
+      {runs && runs.length === 0 && (
+        <p className="muted" style={{ margin: 0 }}>
+          Nothing has run yet. Validation, pipeline, merge and export activity will appear here.
+        </p>
+      )}
+      {runs && runs.length > 0 && (
+        <div className="table-wrap">
+          <table className="data">
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>Status</th>
+                <th>When</th>
+                <th>Summary</th>
+                {onRestore && <th></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {runs.slice(0, limit).map((run) => (
+                <tr key={run.run_id} data-testid="run-row">
+                  <td>
+                    <span className="badge warn">{run.kind}</span>
+                  </td>
+                  <td>
+                    <span className={`badge ${run.status === "success" ? "ok" : "fail"}`}>
+                      {run.status}
+                    </span>
+                  </td>
+                  <td className="muted">{formatDateTime(run.created_at)}</td>
+                  <td className="muted" style={{ maxWidth: 420 }}>
+                    <RunSummaryText summary={run.summary} />
+                  </td>
+                  {onRestore && (
+                    <td>
+                      {run.kind === "transform" &&
+                        Boolean((run.summary as { pipeline?: unknown } | null)?.pipeline) && (
+                          <button
+                            className="btn btn-sm"
+                            onClick={() => onRestore(run)}
+                            title="Load this run's pipeline configuration into the editor"
+                          >
+                            Restore config
+                          </button>
+                        )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function RunSummaryText({ summary }: { summary: Record<string, unknown> | null }) {
+  if (!summary) return <span>—</span>;
+  const parts: string[] = [];
+  if (typeof summary.input_rows === "number" && typeof summary.output_rows === "number") {
+    parts.push(`${summary.input_rows} → ${summary.output_rows} rows`);
+  }
+  if (typeof summary.changed_cells === "number") {
+    parts.push(`${summary.changed_cells} cell(s) changed`);
+  }
+  if (typeof summary.errors_total === "number") {
+    parts.push(`${summary.errors_total} error(s)`);
+  }
+  if (typeof summary.rows_dropped === "number" && summary.rows_dropped > 0) {
+    parts.push(`${summary.rows_dropped} row(s) dropped`);
+  }
+  if (typeof summary.rules === "number") {
+    parts.push(`${summary.rules} rule(s)`);
+  }
+  if (typeof summary.merged_into === "string") {
+    parts.push(`merged into ${summary.merged_into.slice(0, 8)}…`);
+  }
+  if (typeof summary.filename === "string") {
+    parts.push(`exported ${summary.filename}`);
+  }
+  if (parts.length === 0 && Array.isArray(summary.steps)) {
+    const stepSummaries = (summary.steps as { summary?: string }[])
+      .map((s) => s.summary)
+      .filter(Boolean);
+    if (stepSummaries.length) parts.push(stepSummaries.join("; "));
+  }
+  return <span>{parts.length ? parts.join(" · ") : "—"}</span>;
 }
 
 function StepConfig({

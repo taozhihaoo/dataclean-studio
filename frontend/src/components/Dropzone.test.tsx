@@ -5,8 +5,8 @@ import { Dropzone } from "./Dropzone";
 
 describe("Dropzone", () => {
   it("opens the file picker on click and emits the selected file", async () => {
-    const onFile = vi.fn();
-    render(<Dropzone onFile={onFile} />);
+    const onFiles = vi.fn();
+    render(<Dropzone onFiles={onFiles} />);
     const user = userEvent.setup();
 
     const input = screen.getByTestId("file-input");
@@ -16,28 +16,42 @@ describe("Dropzone", () => {
 
     const file = new File(["a,b\n1,2"], "data.csv", { type: "text/csv" });
     await user.upload(input, file);
-    expect(onFile).toHaveBeenCalledWith(file);
+    expect(onFiles).toHaveBeenCalledWith([file]);
+  });
+
+  it("emits multiple files when multiple is enabled", async () => {
+    const onFiles = vi.fn();
+    render(<Dropzone onFiles={onFiles} multiple />);
+    const input = screen.getByTestId("file-input");
+    const user = userEvent.setup();
+    await user.upload(input, [
+      new File(["a"], "one.csv", { type: "text/csv" }),
+      new File(["b"], "two.csv", { type: "text/csv" }),
+    ]);
+    expect(onFiles).toHaveBeenCalledTimes(1);
+    const emitted = onFiles.mock.calls[0][0] as File[];
+    expect(emitted.map((f) => f.name)).toEqual(["one.csv", "two.csv"]);
   });
 
   it("accepts dropped files", () => {
-    const onFile = vi.fn();
-    render(<Dropzone onFile={onFile} />);
+    const onFiles = vi.fn();
+    render(<Dropzone onFiles={onFiles} />);
     const zone = screen.getByTestId("dropzone");
     const file = new File(["x"], "dropped.xlsx", { type: "application/octet-stream" });
     fireEvent.drop(zone, { dataTransfer: fakeDataTransfer(file) });
-    expect(onFile).toHaveBeenCalledWith(file);
+    expect(onFiles).toHaveBeenCalledWith([file]);
   });
 
   it("marks itself as dragging on dragover", () => {
-    render(<Dropzone onFile={vi.fn()} />);
+    render(<Dropzone onFiles={vi.fn()} />);
     const zone = screen.getByTestId("dropzone");
     fireEvent.dragOver(zone);
     expect(zone.className).toContain("dragover");
   });
 
   it("ignores interactions while disabled", async () => {
-    const onFile = vi.fn();
-    render(<Dropzone onFile={onFile} disabled />);
+    const onFiles = vi.fn();
+    render(<Dropzone onFiles={onFiles} disabled />);
     const input = screen.getByTestId("file-input");
     const clickSpy = vi.spyOn(input, "click");
     await userEvent.click(screen.getByRole("button", { name: /upload a csv/i }));

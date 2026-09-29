@@ -25,6 +25,18 @@ _CHUNK = 1024 * 1024
 
 
 @dataclass
+class BatchItemOutcome:
+    filename: str
+    stored_filename: str | None = None
+    status: str = "failed"
+    job_id: str | None = None
+    row_count: int | None = None
+    column_count: int | None = None
+    size_bytes: int | None = None
+    error: dict | None = None
+
+
+@dataclass
 class UploadOutcome:
     job_id: str
     filename: str
@@ -32,6 +44,9 @@ class UploadOutcome:
     row_count: int
     column_count: int
     status: str
+
+
+MAX_BATCH_FILES = 10
 
 
 async def save_and_create_job(upload: UploadFile, settings: Settings) -> UploadOutcome:
@@ -68,6 +83,54 @@ async def save_and_create_job(upload: UploadFile, settings: Settings) -> UploadO
         return await run_in_threadpool(_finalize_upload, temp_path, safe_name, size, content_kind)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+async def save_batch_and_create_jobs(
+    uploads: list[UploadFile], settings: Settings
+) -> list[BatchItemOutcome]:
+    """Upload each file independently; one failure never blocks the rest.
+
+    Every file goes through exactly the same checks as the single-file
+    endpoint (extension, sniffing, size cap, parse). Unexpected errors are
+    also contained per file and logged.
+    """
+    results: list[BatchItemOutcome] = []
+    for upload in uploads:
+        display_name = upload.filename or "upload"
+        try:
+            outcome = await save_and_create_job(upload, settings)
+            results.append(
+                BatchItemOutcome(
+                    filename=display_name,
+                    stored_filename=outcome.filename,
+                    status="uploaded",
+                    job_id=outcome.job_id,
+                    row_count=outcome.row_count,
+                    column_count=outcome.column_count,
+                    size_bytes=outcome.size_bytes,
+                )
+            )
+        except DataCleanError as exc:
+            results.append(
+                BatchItemOutcome(
+                    filename=display_name,
+                    status="failed",
+                    error={"code": exc.code, "message": exc.message},
+                )
+            )
+        except Exception:
+            logger.exception("Unexpected batch upload failure for %s", display_name)
+            results.append(
+                BatchItemOutcome(
+                    filename=display_name,
+                    status="failed",
+                    error={
+                        "code": "internal_error",
+                        "message": "Unexpected server error while uploading this file.",
+                    },
+                )
+            )
+    return results
 
 
 def _match_extension(head: bytes, extension: str, filename: str) -> str:

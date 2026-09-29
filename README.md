@@ -9,6 +9,7 @@ A local-first web tool for cleaning, validating and transforming **CSV / Excel**
 ## Features
 
 - **Upload** — drag & drop or file picker for `.csv`, `.xlsx`, `.xls`; size limits, extension/content sniffing (client MIME types are never trusted), safe stored filenames
+- **Batch upload** — select up to 10 files at once; each file is validated and registered independently, so one bad file fails alone (with a per-file retry) and never blocks the rest
 - **Schema detection** — per-column best-effort type inference (integer, float, boolean, date, datetime, email, phone, string), null counts, unique counts, sample values, invalid-value counts
 - **Preview** — first 50 rows of the dataset at any processing stage
 - **Validation rules** — required, email, numeric range, string length, date parsing, regex (full-match), allowed values; with per-rule error samples, error rates, and optional "drop invalid rows"
@@ -16,8 +17,9 @@ A local-first web tool for cleaning, validating and transforming **CSV / Excel**
 - **Duplicate detection** — exact-row duplicates or key-column duplicates, keep first/last, with example removed rows
 - **Column mapping** — rename / drop / reorder columns, with a preview
 - **Merge** — stack multiple uploaded datasets vertically: union (missing columns filled with null) or intersection (shared columns), optional per-file column mapping
-- **Pipeline** — the operations above form an ordered pipeline: add, reorder, enable/disable, clear; every run starts from the original upload so pipelines are idempotent and safe to re-run
+- **Pipeline (persisted)** — the operations above form an ordered pipeline: add, reorder, enable/disable, clear; the configuration is saved per job in SQLite and restored after a refresh; every run starts from the original upload so pipelines are idempotent and safe to re-run
 - **Transformation preview** — per-step before → after value samples plus example removed rows, without persisting (preview runs on the first 200 rows)
+- **Run history** — every validate/transform/merge/export run is recorded with kind, status, time and a summary; each transform run also stores the exact pipeline configuration it used, so an old run can be restored into the editor and re-executed
 - **Export** — CSV (UTF-8 BOM, Excel-friendly), JSON, XLSX (styled header, frozen first row), custom filename, downloadable directly from the browser
 - **Data quality report** — totals, null counts, duplicate rows, invalid email/date counts, validation summary, per-column statistics; exportable as JSON
 - **Optional AI schema inference** — heuristic column-name mapping always works offline; an OpenAI provider becomes available *only* if you configure a key (see [AI Schema Inference](#ai-schema-inference))
@@ -112,13 +114,13 @@ Uploads, datasets, exports and the SQLite database live in the `dataclean-data` 
 ## Development
 
 ```bash
-# Backend tests (250 tests) — deterministic, offline
+# Backend tests (272 tests) — deterministic, offline
 cd backend && pytest -q
 
 # Backend lint
 ruff check app tests && ruff format --check app tests
 
-# Frontend tests (65 tests)
+# Frontend tests (76 tests)
 cd frontend && npm test
 
 # Frontend lint + build
@@ -206,6 +208,7 @@ Interactive docs: `http://localhost:8000/docs` (Swagger UI).
 | GET | `/health` | liveness + version |
 | GET | `/api/meta` | version, limits, inference providers |
 | POST | `/api/files/upload` | multipart upload → parse + profile + create job |
+| POST | `/api/files/upload-batch` | upload up to 10 files; per-file success/failure results |
 | GET | `/api/jobs` | list jobs |
 | GET | `/api/jobs/{job_id}` | job detail incl. column profiles |
 | DELETE | `/api/jobs/{job_id}` | delete job + workspace + exports |
@@ -214,6 +217,9 @@ Interactive docs: `http://localhost:8000/docs` (Swagger UI).
 | POST | `/api/jobs/{job_id}/validate` | run validation rules |
 | POST | `/api/jobs/{job_id}/transform` | execute a pipeline (persisted) |
 | POST | `/api/jobs/{job_id}/transform/preview` | dry-run on first 200 rows |
+| GET | `/api/jobs/{job_id}/pipeline` | load the saved pipeline configuration |
+| PUT | `/api/jobs/{job_id}/pipeline` | save / replace the pipeline configuration |
+| DELETE | `/api/jobs/{job_id}/pipeline` | delete the saved configuration |
 | POST | `/api/jobs/{job_id}/export` | download CSV/JSON/XLSX |
 | GET | `/api/jobs/{job_id}/quality-report` | quality report JSON |
 | POST | `/api/merge` | merge ≥2 job datasets |
@@ -242,8 +248,8 @@ curl -X POST http://localhost:8000/api/jobs/$JOB/transform \
 
 ## Testing
 
-- **Backend: 250 pytest tests** — parsing (CSV/XLSX/XLS, encodings, malformed input), type inference, profiling, every validation rule, every normalization op, dedupe, mapping, merge, exporters (incl. formula guard), heuristic + OpenAI inference (faked transport), pipeline engine ordering, database repositories, every API endpoint, and end-to-end flows (upload → schema → validate → transform → dedupe → export → report; merge flows). No network, no API keys, deterministic.
-- **Frontend: 65 Vitest tests** — upload flow (success + server errors), preview/schema rendering, inference suggestions, pipeline add/remove/enable/reorder/run, validation rule building, export flow with filename, merge selection, report rendering, error banners.
+- **Backend: 272 pytest tests** — parsing (CSV/XLSX/XLS, encodings, malformed input), type inference, profiling, every validation rule, every normalization op, dedupe, mapping, merge, exporters (incl. formula guard), heuristic + OpenAI inference (faked transport), pipeline engine ordering, database repositories, every API endpoint (incl. pipeline-config CRUD and batch upload), and end-to-end flows (upload → schema → validate → transform → dedupe → export → report; merge flows). No network, no API keys, deterministic.
+- **Frontend: 76 Vitest tests** — single and batch upload (mixed success/failure, retry, per-file status), preview/schema rendering, inference suggestions, pipeline add/remove/enable/reorder/run, save/load/clear persistence (including save-failure feedback and restore-after-reload), run history with config restore, validation rule building, export flow with filename, merge selection, report rendering, error banners, delete confirmation.
 - **CI** (GitHub Actions): backend on Python 3.11 & 3.13 (lint + tests), frontend (lint + tests + build), plus a Docker build with a health-endpoint smoke test.
 
 ## Security
@@ -267,7 +273,7 @@ Honest list, so you know what this is:
 - `regex` validation rules can be slow for pathological patterns on large files (no backtracking limit in Python's `re`).
 - Single-user local tool: no auth, no multi-tenant isolation, no concurrent-edit protection. Do not expose it directly to the internet.
 - Merged jobs inherit the union of columns; type-level schema reconciliation is out of scope.
-- Pipeline step configurations live in the client during a session (runs are recorded server-side); there is no saved-pipeline library yet.
+- One saved pipeline configuration per job (the latest one); there is no named-pipeline library yet.
 
 ## Project Structure
 

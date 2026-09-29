@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { DataTable } from "../components/DataTable";
 import { TypeBadge, ErrorBanner, InfoBanner, LoadingBlock } from "../components/ui";
+import { RunHistorySection } from "./PipelinePage";
 
 type Tab = "preview" | "schema";
 
@@ -250,6 +251,8 @@ export default function DatasetPage() {
           </div>
         </>
       )}
+
+      <RunHistorySection jobId={jobId!} limit={5} />
     </div>
   );
 }

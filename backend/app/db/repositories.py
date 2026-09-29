@@ -105,12 +105,13 @@ def update_job(
 
 
 def delete_job(job_id: str) -> str | None:
-    """Delete a job (runs cascade) and return its file_id, if any."""
+    """Delete a job (runs + pipeline config cascade) and return its file_id, if any."""
     with db() as conn:
         job = _row(conn, "SELECT file_id FROM jobs WHERE id = ?", (job_id,))
         if not job:
             return None
         conn.execute("DELETE FROM processing_runs WHERE job_id = ?", (job_id,))
+        conn.execute("DELETE FROM pipeline_configs WHERE job_id = ?", (job_id,))
         conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
     return job["file_id"]
 
@@ -125,6 +126,43 @@ def delete_file(file_id: str) -> dict[str, Any] | None:
         if record:
             conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
     return record
+
+
+# --- pipeline configs --------------------------------------------------------
+
+
+def get_pipeline_config(job_id: str) -> dict[str, Any] | None:
+    with db() as conn:
+        row = _row(conn, "SELECT * FROM pipeline_configs WHERE job_id = ?", (job_id,))
+    if row:
+        row["config"] = _loads(row.get("config")) or {}
+    return row
+
+
+def save_pipeline_config(job_id: str, config: dict) -> dict[str, Any]:
+    """Upsert the saved pipeline config; created_at survives updates."""
+    import json
+
+    now = utc_now_iso()
+    with db() as conn:
+        existing = _row(conn, "SELECT created_at FROM pipeline_configs WHERE job_id = ?", (job_id,))
+        created_at = existing["created_at"] if existing else now
+        conn.execute(
+            "INSERT INTO pipeline_configs (job_id, config, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?)"
+            " ON CONFLICT(job_id) DO UPDATE SET config = excluded.config,"
+            " updated_at = excluded.updated_at",
+            (job_id, json.dumps(config, ensure_ascii=False), created_at, now),
+        )
+    row = get_pipeline_config(job_id)
+    assert row is not None  # just written
+    return row
+
+
+def delete_pipeline_config(job_id: str) -> bool:
+    with db() as conn:
+        cursor = conn.execute("DELETE FROM pipeline_configs WHERE job_id = ?", (job_id,))
+        return cursor.rowcount > 0
 
 
 # --- processing runs ---------------------------------------------------------

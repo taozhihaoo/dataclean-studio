@@ -34,7 +34,7 @@ describe("DashboardPage", () => {
     expect(screen.getByTestId("jobs-table").textContent).toContain("ready");
   });
 
-  it("deletes a job and refreshes the list", async () => {
+  it("deletes a job after confirmation and refreshes the list", async () => {
     const fetchMock = installFetch({
       "/api/jobs": () => [jobDetail],
       "/api/meta": meta,
@@ -42,10 +42,33 @@ describe("DashboardPage", () => {
     renderDashboard();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Delete" }));
+    // destructive action requires an explicit confirmation step
+    expect(
+      fetchMock.mock.calls.some(([, init]) => String(init?.method) === "DELETE")
+    ).toBe(false);
+    await user.click(screen.getByTestId("confirm-delete"));
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/api/jobs/abc12345"),
       expect.objectContaining({ method: "DELETE" })
     );
+  });
+
+  it("shows an error banner when deleting fails", async () => {
+    installFetch({
+      "/api/jobs": () => [jobDetail],
+      "/api/meta": meta,
+      "/api/jobs/abc12345": () =>
+        new Response(
+          JSON.stringify({ error: { code: "db_error", message: "Delete failed." } }),
+          { status: 500 }
+        ),
+    });
+    renderDashboard();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    await user.click(screen.getByTestId("confirm-delete"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Delete failed.");
   });
 
   it("shows an error banner when the API fails", async () => {

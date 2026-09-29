@@ -133,3 +133,21 @@ class TransformPreviewResponse(BaseModel):
     columns: list[str]
     steps: list[StepReport]
     preview: list[dict[str, Any]]
+
+
+PIPELINE_CONFIG_VERSION = 1
+
+
+class SavedPipelineResponse(BaseModel):
+    """The persisted pipeline configuration of a job.
+
+    ``steps`` uses the exact same schema as the ``steps`` of a transform
+    request, so a saved config can be replayed (and restored into the UI)
+    without any client-side translation.
+    """
+
+    job_id: str
+    version: int
+    steps: list[PipelineStep]
+    created_at: str
+    updated_at: str
