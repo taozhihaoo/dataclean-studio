@@ -18,7 +18,9 @@ backend/static/
 *.local
 
 # --- Runtime data (uploads, datasets, exports, SQLite) ---
-data/
+# Root-anchored: only the repo-root runtime dir, not e.g. backend/tests/data/
+/data/
+backend/data/
 *.db
 *.sqlite3
 
