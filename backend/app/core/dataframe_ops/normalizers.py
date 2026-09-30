@@ -7,8 +7,6 @@ parse (e.g. an unparseable date is kept as-is and counted, never dropped).
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import pandas as pd
 
 from app.core.dataframe_ops.profile import is_null
@@ -98,12 +96,37 @@ def _apply_operation(
     return series, applied
 
 
+# strftime directives that are valid on every supported platform (the set
+# documented for datetime.strftime). glibc strftime silently passes through
+# unknown directives like %Q, so a trial strftime() is not a portable
+# validity check — the format must be validated explicitly.
+_STRFTIME_DIRECTIVES = frozenset("aAwdbBmyYHIpMSfzZjUWGucxXV%")
+
+
+def _validate_date_format(fmt: str) -> None:
+    index = 0
+    while index < len(fmt):
+        if fmt[index] != "%":
+            index += 1
+            continue
+        if index + 1 >= len(fmt):
+            raise DataCleanError(
+                "invalid_date_format",
+                f"Invalid date_format '{fmt}': dangling '%' at the end.",
+            )
+        directive = fmt[index + 1]
+        if directive not in _STRFTIME_DIRECTIVES:
+            raise DataCleanError(
+                "invalid_date_format",
+                f"Invalid date_format '{fmt}': unknown directive '%{directive}'.",
+            )
+        index += 2  # consume the directive (or an escaped '%%') entirely
+
+
 def _normalize_dates(series: pd.Series, config: NormalizeConfig) -> pd.Series:
     non_null = ~series.map(is_null)
+    _validate_date_format(config.date_format)
     try:
-        # strftime in pandas swallows bad directives; validate the format
-        # with stdlib first so users get a clean error.
-        datetime(2025, 1, 15, 13, 30, 45).strftime(config.date_format)
         parsed = parse_date_series(series.where(non_null), day_first=config.day_first)
         formatted = parsed.dt.strftime(config.date_format)
     except ValueError as exc:

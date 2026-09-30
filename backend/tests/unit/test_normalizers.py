@@ -104,6 +104,28 @@ class TestDateNormalization:
             normalize(df, "d", "normalize_date", date_format="%Q-bogus")
         assert excinfo.value.code == "invalid_date_format"
 
+    def test_unknown_directive_rejected_deterministically(self):
+        """glibc strftime silently accepts unknown directives; the whitelist
+        must reject them on every platform, not via a trial strftime."""
+        df = frame(d=["2025-01-15"])
+        with pytest.raises(DataCleanError) as excinfo:
+            normalize(df, "d", "normalize_date", date_format="%Y-%o-%d")
+        assert excinfo.value.code == "invalid_date_format"
+        assert "unknown directive '%o'" in excinfo.value.message
+
+    def test_dangling_percent_rejected(self):
+        df = frame(d=["2025-01-15"])
+        with pytest.raises(DataCleanError) as excinfo:
+            normalize(df, "d", "normalize_date", date_format="%Y-%m-%d %")
+        assert excinfo.value.code == "invalid_date_format"
+        assert "dangling" in excinfo.value.message
+
+    def test_all_documented_directives_accepted(self):
+        df = frame(d=["2025-01-15"])
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y %H:%M", "%B %d, %Y", "%A %j %U%W%G%u%V", "100%%"):
+            result, _ = normalize(df, "d", "normalize_date", date_format=fmt)
+            assert result["d"].tolist()[0]  # produced output, no error
+
 
 class TestPhoneNormalization:
     def test_strips_separators(self):
