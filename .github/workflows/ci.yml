@@ -33,7 +33,17 @@ jobs:
           ruff format --check app tests
 
       - name: Run tests (pytest)
-        run: pytest -q
+        run: |
+          set -o pipefail
+          pytest -q --tb=short 2>&1 | tee /tmp/pytest.log
+
+      - name: Surface failed tests as annotations
+        if: failure()
+        run: |
+          grep -E "^(FAILED|ERROR) " /tmp/pytest.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+          tail -5 /tmp/pytest.log
 
   frontend:
     name: Frontend (Node 22)
